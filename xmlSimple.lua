@@ -1,14 +1,15 @@
-module(..., package.seeall)
-
----------------------------------------------------------------------------------
----------------------------------------------------------------------------------
+-- xmlSimple.lua - XML parser for Lua
 --
--- xml.lua - XML parser for use with the Corona SDK.
+-- Compatible with Lua 5.1, 5.2, 5.3, 5.4 and Corona SDK.
 --
--- version: 1.2
+-- version: 1.3
 --
 -- CHANGELOG:
 --
+-- 1.3 - Fixed loadFile for pure Lua (no Corona dependency),
+--       fixed properties() returning wrong values for attributes,
+--       improved error handling in loadFile,
+--       replaced deprecated module() with standard module pattern.
 -- 1.2 - Created new structure for returned table
 -- 1.1 - Fixed base directory issue with the loadFile() function.
 --
@@ -17,9 +18,12 @@ module(..., package.seeall)
 --
 ---------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------
-function newParser()
 
-    XmlParser = {};
+local M = {}
+
+function M.newParser()
+
+    local XmlParser = {};
 
     function XmlParser:ToXmlString(value)
         value = string.gsub(value, "&", "&amp;"); -- '&' -> "&amp;"
@@ -58,7 +62,7 @@ function newParser()
 
     function XmlParser:ParseXmlText(xmlText)
         local stack = {}
-        local top = newNode()
+        local top = M.newNode()
         table.insert(stack, top)
         local ni, c, label, xarg, empty
         local i, j = 1, 1
@@ -71,14 +75,14 @@ function newParser()
                 stack[#stack]:setValue(lVal)
             end
             if empty == "/" then -- empty element tag
-                local lNode = newNode(label)
+                local lNode = M.newNode(label)
                 self:ParseArgs(lNode, xarg)
                 top:addChild(lNode)
             elseif c == "" then -- start tag
-                local lNode = newNode(label)
+                local lNode = M.newNode(label)
                 self:ParseArgs(lNode, xarg)
                 table.insert(stack, lNode)
-		top = lNode
+                top = lNode
             else -- end tag
                 local toclose = table.remove(stack) -- remove top
 
@@ -101,11 +105,19 @@ function newParser()
     end
 
     function XmlParser:loadFile(xmlFilename, base)
-        if not base then
-            base = system.ResourceDirectory
+        local path
+
+        -- If Corona SDK's system module is available, use it for path resolution
+        if system and system.pathForFile then
+            if not base then
+                base = system.ResourceDirectory
+            end
+            path = system.pathForFile(xmlFilename, base)
+        else
+            -- Pure Lua: use the filename directly as the file path
+            path = xmlFilename
         end
 
-        local path = system.pathForFile(xmlFilename, base)
         local hFile, err = io.open(path, "r");
 
         if hFile and not err then
@@ -113,15 +125,15 @@ function newParser()
             io.close(hFile);
             return self:ParseXmlText(xmlText), nil;
         else
-            print(err)
-            return nil
+            local msg = err or ("Failed to open file: " .. tostring(path))
+            return nil, msg
         end
     end
 
     return XmlParser
 end
 
-function newNode(name)
+function M.newNode(name)
     local node = {}
     node.___value = nil
     node.___name = name
@@ -162,8 +174,10 @@ function newNode(name)
         else
             self[lName] = value
         end
-        table.insert(self.___props, { name = name, value = self[name] })
+        table.insert(self.___props, { name = name, value = value })
     end
 
     return node
 end
+
+return M
